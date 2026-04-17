@@ -130,12 +130,12 @@ configure_provider() {
   tmp_js=$(mktemp /tmp/claw-vt-XXXXXX.js)
   cat > "$tmp_js" << 'JSEOF'
 const fs = require('fs');
-const cfgPath = process.argv[1];
-const provider = process.argv[2];
-const apiKey = process.argv[3];
-const baseUrl = process.argv[4];
-const model = process.argv[5];
-const apiStyle = process.argv[6];
+const cfgPath = process.argv[2];
+const provider = process.argv[3];
+const apiKey = process.argv[4];
+const baseUrl = process.argv[5];
+const model = process.argv[6];
+const apiStyle = process.argv[7];
 
 // Strip JSON5 features (trailing commas, single quotes, comments) for safe parsing
 let raw = fs.readFileSync(cfgPath, 'utf8');
@@ -168,7 +168,11 @@ console.log('Provider configured');
 JSEOF
 
   local tmp_json
-  tmp_json=$(node "$tmp_js" "$OPENCLAW_JSON" "$provider" "$api_key" "$base_url" "$model" "$api_style")
+  tmp_json=$(node "$tmp_js" "$OPENCLAW_JSON" "$provider" "$api_key" "$base_url" "$model" "$api_style" 2>&1)
+  local rc=$?
+  if [ $rc -ne 0 ]; then
+    err "Failed to configure provider. Check that openclaw.json is valid JSON."
+  fi
   rm -f "$tmp_js"
 
   if [ "$tmp_json" = "Provider configured" ]; then
