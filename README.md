@@ -19,8 +19,8 @@ OpenClaw Skill：语音转文字，支持多供应商自动发现 + 一键初始
 # 一行命令安装（无需 git clone）
 bash <(curl -fsSL https://raw.githubusercontent.com/hy-zhang-io/claw-voice-transcriber/main/scripts/install.sh)
 
-# 或指定供应商
-bash <(curl -fsSL https://raw.githubusercontent.com/hy-zhang-io/claw-voice-transcriber/main/scripts/install.sh) --provider alibaba
+# 指定供应商 + API Key（全自动化，无需交互）
+bash <(curl -fsSL https://raw.githubusercontent.com/hy-zhang-io/claw-voice-transcriber/main/scripts/install.sh) --provider alibaba --api-key sk-xxx
 
 # 重启 Gateway 生效
 openclaw gateway restart

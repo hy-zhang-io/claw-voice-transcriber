@@ -87,19 +87,22 @@ configure_provider() {
       local base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
       local model="qwen3-asr-flash"
       local api_style="openai-completions"
-      read -rp "Enter Alibaba DashScope API Key (sk-xxx): " api_key
+      api_key="${API_KEY:-}"
+      [ -z "$api_key" ] && read -rp "Enter Alibaba DashScope API Key (sk-xxx): " api_key
       ;;
     openai)
       local base_url="https://api.openai.com/v1"
       local model="whisper-1"
       local api_style=""
-      read -rp "Enter OpenAI API Key (sk-xxx): " api_key
+      api_key="${API_KEY:-}"
+      [ -z "$api_key" ] && read -rp "Enter OpenAI API Key (sk-xxx): " api_key
       ;;
     zhipu)
       local base_url="https://open.bigmodel.cn/api/paas/v4"
       local model="glm-asr-2512"
       local api_style="openai-completions"
-      read -rp "Enter Zhipu API Key: " api_key
+      api_key="${API_KEY:-}"
+      [ -z "$api_key" ] && read -rp "Enter Zhipu API Key: " api_key
       ;;
     *)
       err "Unknown provider: ${provider}"
@@ -249,9 +252,19 @@ summary() {
 # --- Main ---
 main() {
   local provider=""
-  if [ "${1:-}" = "--provider" ] && [ -n "${2:-}" ]; then
-    provider="$2"
-  fi
+  local api_key=""
+
+  # Parse arguments: --provider <name> --api-key <key>
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --provider) provider="$2"; shift 2 ;;
+      --api-key)  api_key="$2"; shift 2 ;;
+      -*) err "Unknown option: $1" ;;
+      *) break ;;
+    esac
+  done
+
+  export API_KEY="$api_key"
 
   echo ""
   echo -e "${BLUE}🎙️  claw-voice-transcriber - Initialization${NC}"
