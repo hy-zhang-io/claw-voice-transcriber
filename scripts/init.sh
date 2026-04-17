@@ -140,7 +140,7 @@ const apiStyle = process.argv[7];
 // Strip JSON5 features (trailing commas, single quotes, comments) for safe parsing
 let raw = fs.readFileSync(cfgPath, 'utf8');
 raw = raw.replace(/\/\*[^]*?\*\/|\/\/.*$/gm, '');  // strip comments
-raw = raw.replace(/,\s*([}\]])/g, '$1');           // strip trailing commas
+raw = raw.replace(/,(\r?\n|\r|\s)*([}\]])/g, '$1$2'); // strip trailing commas
 const cfg = JSON.parse(raw);
 if (!cfg.models) cfg.models = {};
 if (!cfg.models.providers) cfg.models.providers = {};

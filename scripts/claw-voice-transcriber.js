@@ -103,16 +103,15 @@ function resolveEnvRefs(obj) {
  */
 function loadJson(filePath) {
   try {
-    let raw = fs.readFileSync(filePath, 'utf8');
-    // Strip JSON5 features for compatibility (comments, trailing commas)
-    raw = raw.replace(/\/\*[^]*?\*\/|\/\/.*$/gm, '');
-    raw = raw.replace(/,\s*([}\]])/g, '$1');
-    return JSON.parse(raw);
+    // Use require() for JSON5 compatibility (trailing commas, comments)
+    // Clear module cache first to get fresh content
+    delete require.cache[require.resolve(filePath)];
+    return require(filePath);
   } catch (e) {
-    if (e.code === 'ENOENT') return null;
+    if (e.code === 'ENOENT' || e.code === 'MODULE_NOT_FOUND') return null;
     const safeName = path.basename(filePath);
     if (e.code === 'EACCES') process.stderr.write(`Warning: permission denied reading ${safeName}\n`);
-    else if (e instanceof SyntaxError) process.stderr.write(`Warning: invalid JSON in ${safeName}\n`);
+    else if (e instanceof SyntaxError) process.stderr.write(`Warning: invalid JSON in ${safeName}: ${e.message}\n`);
     else process.stderr.write(`Warning: failed to read ${safeName}: ${e.message}\n`);
     return null;
   }
