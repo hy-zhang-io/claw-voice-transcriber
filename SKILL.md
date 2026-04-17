@@ -19,81 +19,88 @@ Transcribe audio to text via multiple ASR providers with automatic fallback.
 ## Quick Start
 
 ```bash
-node scripts/asr.js /path/to/audio.ogg
+node {baseDir}/scripts/claw-voice-transcriber.js /path/to/audio.ogg
 ```
 
 Transcribe and archive for training data:
 
 ```bash
-node scripts/asr.js /path/to/audio.ogg --archive
+node {baseDir}/scripts/claw-voice-transcriber.js /path/to/audio.ogg --archive
 ```
 
 Transcribe from URL:
 
 ```bash
-node scripts/asr.js https://example.com/audio.mp3
+node {baseDir}/scripts/claw-voice-transcriber.js https://example.com/audio.mp3
 ```
 
 ## Configuration
 
-### Step 1: Set API Key in openclaw.json
+### Step 1: Add ASR models in openclaw.json
 
-Add to `~/.openclaw/openclaw.json` under top-level:
+Add ASR models to `~/.openclaw/openclaw.json` under `models.providers`. Mark each ASR model with `"type": "asr"`:
 
 ```json
 {
-  "skills": {
-    "entries": {
-      "claw-voice-transcriber": {
-        "enabled": true,
-        "env": {
-          "ASR_ALIBABA_API_KEY": "sk-xxx"
-        }
+  "models": {
+    "providers": {
+      "alibaba": {
+        "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "apiKey": "sk-xxx",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "qwen3-asr-flash",
+            "name": "Qwen3 ASR Flash",
+            "type": "asr",
+            "input": ["audio"]
+          }
+        ]
+      },
+      "openai": {
+        "baseUrl": "https://api.openai.com/v1",
+        "apiKey": "sk-xxx",
+        "models": [
+          {
+            "id": "whisper-1",
+            "name": "OpenAI Whisper",
+            "type": "asr",
+            "input": ["audio"]
+          }
+        ]
+      },
+      "zhipu": {
+        "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+        "apiKey": "xxx",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "glm-asr-2512",
+            "name": "Zhipu GLM-ASR",
+            "type": "asr",
+            "input": ["audio"]
+          }
+        ]
       }
     }
   }
 }
 ```
 
-For multiple providers, add separate env vars (e.g. `ASR_OPENAI_API_KEY`, `ASR_ZHIPU_API_KEY`).
+The transcriber automatically discovers models with `"type": "asr"` and uses the first one found.
 
-### Step 2: Create provider config
+### Step 2 (optional): Set active provider preference
 
-Create `~/.openclaw/config/claw-voice-transcriber.json`:
-
-#### Multi-provider (recommended, with fallback)
+Create `~/.openclaw/config/claw-voice-transcriber-prefs.json` to pick which provider/model to use:
 
 ```json
 {
-  "primaryProvider": "alibaba-qwen",
-  "fallbackProvider": "openai-whisper",
-  "providers": {
-    "alibaba-qwen": {
-      "apiKey": "${ASR_ALIBABA_API_KEY}",
-      "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      "model": "qwen3-asr-flash",
-      "style": "qwen"
-    },
-    "openai-whisper": {
-      "apiKey": "${ASR_OPENAI_API_KEY}",
-      "baseUrl": "https://api.openai.com/v1",
-      "model": "whisper-1",
-      "style": "openai"
-    }
-  }
+  "activeProvider": "alibaba",
+  "activeModel": "qwen3-asr-flash"
 }
 ```
 
-#### Single provider (simple)
-
-```json
-{
-  "apiKey": "${ASR_ALIBABA_API_KEY}",
-  "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-  "model": "qwen3-asr-flash",
-  "style": "qwen"
-}
-```
+Without this file, the first `type: "asr"` model in `models.providers` is used.
 
 ### Step 3: Restart Gateway
 
@@ -105,8 +112,21 @@ openclaw gateway restart
 
 1. Per-agent: `~/.openclaw/agents/<agentId>/agent/claw-voice-transcriber.json`
 2. Workspace: `<workspace>/config/claw-voice-transcriber.json`
-3. Environment variables: `ASR_API_KEY`, `ASR_BASE_URL`, `ASR_MODEL`
-4. Global default from openclaw.json env
+3. openclaw.json `models.providers` (type: "asr" models) + prefs file
+4. Environment variables: `ASR_API_KEY`, `ASR_BASE_URL`, `ASR_MODEL`
+
+> **Backward compatible:** Per-agent and workspace config files still work as before (highest priority).
+
+## Style Detection
+
+The `style` is auto-detected from the provider configuration:
+
+- `api: "openai-completions"` → style `qwen` (chat/completions + input_audio)
+- `asrStyle` field on model or provider level (explicit override)
+- Falls back to `openai` style, or `qwen` if baseUrl contains `dashscope`
+
+`style: "qwen"` = chat/completions + input_audio (supports base64 local files)
+`style: "openai"` = /audio/transcriptions + multipart upload
 
 ## Preconfigured Providers
 
@@ -115,9 +135,6 @@ openclaw gateway restart
 | Alibaba Qwen3-ASR-Flash | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen3-asr-flash` | `qwen` |
 | OpenAI Whisper | `https://api.openai.com/v1` | `whisper-1` | `openai` |
 | Zhipu GLM-ASR | `https://open.bigmodel.cn/api/paas/v4` | `glm-asr-2512` | `qwen` |
-
-`style: "qwen"` = chat/completions + input_audio (supports base64 local files)
-`style: "openai"` = /audio/transcriptions + multipart upload
 
 > Alibaba Cloud: activate `qwen3-asr-flash` at https://bailian.console.aliyun.com
 
