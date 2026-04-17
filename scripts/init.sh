@@ -118,12 +118,12 @@ configure_provider() {
   fi
 
   # Backup openclaw.json before modifying
-  local backup_file="${OPENCLAW_DIR}/openclaw.json.$(date +%Y%m%d_%H%M%S)_$(date +%3N)"
+  local backup_file="${OPENCLAW_DIR}/openclaw.json.HY-$(date +%Y%m%d_%H%M%S)_$(date +%3N)"
   cp "$OPENCLAW_JSON" "$backup_file"
   ok "Backup saved: $(basename "$backup_file")"
 
-  # Keep only the latest 5 backups
-  ls -t "${OPENCLAW_DIR}/openclaw.json."* 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null
+  # Keep only the latest 5 HY- backups
+  ls -t "${OPENCLAW_DIR}/openclaw.json.HY-"* 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null
 
   # Add provider to openclaw.json models.providers using node (no jq dependency)
   local tmp_js
