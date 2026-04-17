@@ -129,7 +129,11 @@ const baseUrl = process.argv[4];
 const model = process.argv[5];
 const apiStyle = process.argv[6];
 
-const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+// Strip JSON5 features (trailing commas, single quotes, comments) for safe parsing
+let raw = fs.readFileSync(cfgPath, 'utf8');
+raw = raw.replace(/\/\*[^]*?\*\/|\/\/.*$/gm, '');  // strip comments
+raw = raw.replace(/,\s*([}\]])/g, '$1');           // strip trailing commas
+const cfg = JSON.parse(raw);
 if (!cfg.models) cfg.models = {};
 if (!cfg.models.providers) cfg.models.providers = {};
 

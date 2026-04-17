@@ -103,7 +103,11 @@ function resolveEnvRefs(obj) {
  */
 function loadJson(filePath) {
   try {
-    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    let raw = fs.readFileSync(filePath, 'utf8');
+    // Strip JSON5 features for compatibility (comments, trailing commas)
+    raw = raw.replace(/\/\*[^]*?\*\/|\/\/.*$/gm, '');
+    raw = raw.replace(/,\s*([}\]])/g, '$1');
+    return JSON.parse(raw);
   } catch (e) {
     if (e.code === 'ENOENT') return null;
     const safeName = path.basename(filePath);
