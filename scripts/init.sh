@@ -114,51 +114,46 @@ configure_provider() {
   fi
 
   # Add provider to openclaw.json models.providers using node (no jq dependency)
+  local tmp_js
+  tmp_js=$(mktemp /tmp/claw-vt-XXXXXX.js)
+  cat > "$tmp_js" << 'JSEOF'
+const fs = require('fs');
+const cfgPath = process.argv[1];
+const provider = process.argv[2];
+const apiKey = process.argv[3];
+const baseUrl = process.argv[4];
+const model = process.argv[5];
+const apiStyle = process.argv[6];
+
+const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+if (!cfg.models) cfg.models = {};
+if (!cfg.models.providers) cfg.models.providers = {};
+
+const asrModel = { id: model, name: model, type: 'asr', input: ['audio'] };
+if (apiStyle) asrModel.asrStyle = 'qwen';
+
+const existing = cfg.models.providers[provider];
+if (existing) {
+  existing.apiKey = apiKey;
+  existing.baseUrl = baseUrl;
+  existing.models = existing.models || [];
+  if (!existing.models.some(m => m.id === model && m.type === 'asr')) {
+    existing.models.push(asrModel);
+  }
+  if (apiStyle) existing.api = apiStyle;
+} else {
+  const entry = { apiKey, baseUrl, models: [asrModel] };
+  if (apiStyle) entry.api = apiStyle;
+  cfg.models.providers[provider] = entry;
+}
+
+fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + '\n');
+console.log('Provider configured');
+JSEOF
+
   local tmp_json
-  tmp_json=$(node -e "
-    const fs = require('fs');
-    const cfgPath = '${OPENCLAW_JSON}';
-    const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-
-    if (!cfg.models) cfg.models = {};
-    if (!cfg.models.providers) cfg.models.providers = {};
-
-    const provider = cfg.models.providers['${provider}'];
-    if (provider) {
-      // Update existing provider
-      provider.apiKey = '${api_key}';
-      provider.baseUrl = '${base_url}';
-      provider.models = provider.models || [];
-      // Add ASR model if not exists
-      if (!provider.models.some(m => m.id === '${model}' && m.type === 'asr')) {
-        provider.models.push({
-          id: '${model}',
-          name: '${model}',
-          type: 'asr',
-          input: ['audio']${api_style ? ",
-          asrStyle: 'qwen'" : ''}
-        });
-      }
-      if ('${api_style}') provider.api = '${api_style}';
-    } else {
-      // Create new provider
-      cfg.models.providers['${provider}'] = {
-        apiKey: '${api_key}',
-        baseUrl: '${base_url}',
-        models: [{
-          id: '${model}',
-          name: '${model}',
-          type: 'asr',
-          input: ['audio']${api_style ? ",
-          asrStyle: 'qwen'" : ''}
-        }]${api_style ? ",
-        api: '${api_style}'" : ""}
-      };
-    }
-
-    fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + '\n');
-    console.log('Provider configured');
-  ")
+  tmp_json=$(node "$tmp_js" "$OPENCLAW_JSON" "$provider" "$api_key" "$base_url" "$model" "$api_style")
+  rm -f "$tmp_js"
 
   if [ "$tmp_json" = "Provider configured" ]; then
     ok "Provider '${provider}' (${model}) added to openclaw.json"
