@@ -16,20 +16,22 @@ OpenClaw Skill：语音转文字，支持多供应商自动发现 + 一键初始
 ## 快速开始
 
 ```bash
-# 克隆项目
-git clone https://github.com/hy-zhang-io/claw-voice-transcriber.git
-cd claw-voice-transcriber
-
-# 一键初始化（交互式引导）
-bash scripts/init.sh
+# 一行命令安装（无需 git clone）
+bash <(curl -fsSL https://raw.githubusercontent.com/hy-zhang-io/claw-voice-transcriber/main/scripts/install.sh)
 
 # 或指定供应商
-bash scripts/init.sh --provider alibaba
-bash scripts/init.sh --provider openai
-bash scripts/init.sh --provider zhipu
+bash <(curl -fsSL https://raw.githubusercontent.com/hy-zhang-io/claw-voice-transcriber/main/scripts/install.sh) --provider alibaba
 
 # 重启 Gateway 生效
 openclaw gateway restart
+```
+
+也可以先 clone 再安装：
+
+```bash
+git clone https://github.com/hy-zhang-io/claw-voice-transcriber.git
+cd claw-voice-transcriber
+bash scripts/init.sh
 ```
 
 初始化脚本会自动完成：
