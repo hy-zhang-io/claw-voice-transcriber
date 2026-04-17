@@ -117,6 +117,16 @@ configure_provider() {
     err "API Key cannot be empty"
   fi
 
+  # Backup openclaw.json before modifying
+  local backup_dir="${OPENCLAW_DIR}/backups"
+  local backup_file="${backup_dir}/openclaw.json.$(date +%Y%m%d_%H%M%S)"
+  mkdir -p "$backup_dir"
+  cp "$OPENCLAW_JSON" "$backup_file"
+  ok "Backup saved: openclaw.json.$(date +%Y%m%d_%H%M%S)"
+
+  # Keep only the latest 5 backups
+  ls -t "${backup_dir}/openclaw.json."* 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null
+
   # Add provider to openclaw.json models.providers using node (no jq dependency)
   local tmp_js
   tmp_js=$(mktemp /tmp/claw-vt-XXXXXX.js)
