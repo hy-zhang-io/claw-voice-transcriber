@@ -46,14 +46,18 @@ check_prerequisites() {
 install_skill() {
   info "Installing skill to ${SKILL_TARGET_DIR}..."
 
+  # Atomic install: write to temp dir, then rename
+  local tmp_skill
+  tmp_skill=$(mktemp -d /tmp/claw-vt-install-XXXXXX)
+  cp -r "${SKILL_SOURCE_DIR}/SKILL.md" "$tmp_skill/"
+  cp -r "${SKILL_SOURCE_DIR}/scripts" "$tmp_skill/"
+
   if [ -d "$SKILL_TARGET_DIR" ]; then
     warn "Skill directory already exists, updating..."
     rm -rf "$SKILL_TARGET_DIR"
   fi
 
-  mkdir -p "$SKILL_TARGET_DIR"
-  cp -r "${SKILL_SOURCE_DIR}/SKILL.md" "$SKILL_TARGET_DIR/"
-  cp -r "${SKILL_SOURCE_DIR}/scripts" "$SKILL_TARGET_DIR/"
+  mv "$tmp_skill" "$SKILL_TARGET_DIR"
 
   ok "Skill installed"
 }
