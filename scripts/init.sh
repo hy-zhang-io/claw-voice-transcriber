@@ -118,7 +118,7 @@ configure_provider() {
   fi
 
   # Backup openclaw.json before modifying
-  local backup_dir="${OPENCLAW_DIR}/backups"
+  local backup_dir="${OPENCLAW_DIR}/config/claw-voice-transcriber-backups"
   local backup_file="${backup_dir}/openclaw.json.$(date +%Y%m%d_%H%M%S)"
   mkdir -p "$backup_dir"
   cp "$OPENCLAW_JSON" "$backup_file"
