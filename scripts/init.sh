@@ -180,6 +180,67 @@ JSEOF
   else
     err "Failed to configure provider"
   fi
+
+  # Register CLI model in tools.media.audio for all agents
+  register_audio_hook "$provider" "$model"
+}
+
+# --- Step 2.5: Register audio transcription hook ---
+register_audio_hook() {
+  local provider="$1"
+  local model="$2"
+  info "Registering audio transcription hook for all agents..."
+
+  local tmp_js
+  tmp_js=$(mktemp /tmp/claw-vt-XXXXXX.js)
+  cat > "$tmp_js" << 'JSEOF'
+const fs = require('fs');
+const cfgPath = process.argv[2];
+
+let raw = fs.readFileSync(cfgPath, 'utf8');
+raw = raw.replace(/\/\*[^]*?\*\/|\/\/.*$/gm, '');
+raw = raw.replace(/,(\r?\n|\r|\s)*([}\]])/g, '$1$2');
+const cfg = JSON.parse(raw);
+
+if (!cfg.tools) cfg.tools = {};
+if (!cfg.tools.media) cfg.tools.media = {};
+if (!cfg.tools.media.audio) cfg.tools.media.audio = {};
+
+const audio = cfg.tools.media.audio;
+audio.enabled = true;
+
+const scriptPath = require('os').homedir() + '/.openclaw/skills/claw-voice-transcriber/scripts/claw-voice-transcriber.js';
+const cliEntry = {
+  type: 'cli',
+  command: 'node',
+  args: [scriptPath, '{{MediaPath}}'],
+  timeoutSeconds: 30
+};
+
+if (!audio.models) {
+  audio.models = [cliEntry];
+} else {
+  // Prepend CLI entry (highest priority) if not already registered
+  const exists = audio.models.some(m =>
+    m.type === 'cli' && m.args && m.args[1] === '{{MediaPath}}'
+  );
+  if (!exists) audio.models.unshift(cliEntry);
+}
+
+fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + '\n');
+console.log('Audio hook registered');
+JSEOF
+
+  local result
+  result=$(node "$tmp_js" "$OPENCLAW_JSON" 2>&1)
+  local rc=$?
+  rm -f "$tmp_js"
+
+  if [ $rc -eq 0 ] && [ "$result" = "Audio hook registered" ]; then
+    ok "Audio transcription hook registered (all agents)"
+  else
+    warn "Failed to register audio hook: $result"
+  fi
 }
 
 # --- Step 3: Create prefs ---
