@@ -117,69 +117,29 @@ configure_provider() {
     err "API Key cannot be empty"
   fi
 
-  # Backup openclaw.json before modifying
-  local backup_file="${OPENCLAW_DIR}/openclaw.json.HY-$(date +%Y%m%d_%H%M%S)_$(date +%3N)"
-  cp "$OPENCLAW_JSON" "$backup_file"
-  ok "Backup saved: $(basename "$backup_file")"
+  # Write ASR provider config to dedicated file (not openclaw.json models.providers)
+  local asr_config_path="${CONFIG_DIR}/claw-voice-transcriber.json"
+  local asr_style
+  case "$api_style" in
+    openai-completions) asr_style="qwen" ;;
+    *) asr_style="openai" ;;
+  esac
 
-  # Keep only the latest 5 HY- backups
-  ls -t "${OPENCLAW_DIR}/openclaw.json.HY-"* 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null
-
-  # Add provider to openclaw.json models.providers using node (no jq dependency)
-  local tmp_js
-  tmp_js=$(mktemp /tmp/claw-vt-XXXXXX.js)
-  cat > "$tmp_js" << 'JSEOF'
-const fs = require('fs');
-const cfgPath = process.argv[2];
-const provider = process.argv[3];
-const apiKey = process.argv[4];
-const baseUrl = process.argv[5];
-const model = process.argv[6];
-const apiStyle = process.argv[7];
-
-// Strip JSON5 features (trailing commas, single quotes, comments) for safe parsing
-let raw = fs.readFileSync(cfgPath, 'utf8');
-raw = raw.replace(/\/\*[^]*?\*\/|\/\/.*$/gm, '');  // strip comments
-raw = raw.replace(/,(\r?\n|\r|\s)*([}\]])/g, '$1$2'); // strip trailing commas
-const cfg = JSON.parse(raw);
-if (!cfg.models) cfg.models = {};
-if (!cfg.models.providers) cfg.models.providers = {};
-
-const asrModel = { id: model, name: model, type: 'asr', input: ['audio'] };
-if (apiStyle) asrModel.asrStyle = 'qwen';
-
-const existing = cfg.models.providers[provider];
-if (existing) {
-  existing.apiKey = apiKey;
-  existing.baseUrl = baseUrl;
-  existing.models = existing.models || [];
-  if (!existing.models.some(m => m.id === model && m.type === 'asr')) {
-    existing.models.push(asrModel);
+  mkdir -p "$CONFIG_DIR"
+  cat > "$asr_config_path" << CFGEOF
+{
+  "primaryProvider": "$provider",
+  "providers": {
+    "$provider": {
+      "apiKey": "$api_key",
+      "baseUrl": "$base_url",
+      "model": "$model",
+      "style": "$asr_style"
+    }
   }
-  if (apiStyle) existing.api = apiStyle;
-} else {
-  const entry = { apiKey, baseUrl, models: [asrModel] };
-  if (apiStyle) entry.api = apiStyle;
-  cfg.models.providers[provider] = entry;
 }
-
-fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + '\n');
-console.log('Provider configured');
-JSEOF
-
-  local tmp_json
-  tmp_json=$(node "$tmp_js" "$OPENCLAW_JSON" "$provider" "$api_key" "$base_url" "$model" "$api_style" 2>&1)
-  local rc=$?
-  if [ $rc -ne 0 ]; then
-    err "Failed to configure provider. Check that openclaw.json is valid JSON."
-  fi
-  rm -f "$tmp_js"
-
-  if [ "$tmp_json" = "Provider configured" ]; then
-    ok "Provider '${provider}' (${model}) added to openclaw.json"
-  else
-    err "Failed to configure provider"
-  fi
+CFGEOF
+  ok "ASR provider '${provider}' (${model}) configured"
 
   # Register CLI model in tools.media.audio for all agents
   register_audio_hook "$provider" "$model"
@@ -187,20 +147,18 @@ JSEOF
 
 # --- Step 2.5: Register audio transcription hook ---
 register_audio_hook() {
-  local provider="$1"
-  local model="$2"
   info "Registering audio transcription hook for all agents..."
 
   local tmp_js
   tmp_js=$(mktemp /tmp/claw-vt-XXXXXX.js)
   cat > "$tmp_js" << 'JSEOF'
 const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const cfgPath = process.argv[2];
 
-let raw = fs.readFileSync(cfgPath, 'utf8');
-raw = raw.replace(/\/\*[^]*?\*\/|\/\/.*$/gm, '');
-raw = raw.replace(/,(\r?\n|\r|\s)*([}\]])/g, '$1$2');
-const cfg = JSON.parse(raw);
+// Use require for JSON5 compatibility
+const cfg = require(cfgPath);
 
 if (!cfg.tools) cfg.tools = {};
 if (!cfg.tools.media) cfg.tools.media = {};
@@ -209,7 +167,7 @@ if (!cfg.tools.media.audio) cfg.tools.media.audio = {};
 const audio = cfg.tools.media.audio;
 audio.enabled = true;
 
-const scriptPath = require('os').homedir() + '/.openclaw/skills/claw-voice-transcriber/scripts/claw-voice-transcriber.js';
+const scriptPath = os.homedir() + '/.openclaw/skills/claw-voice-transcriber/scripts/claw-voice-transcriber.js';
 const cliEntry = {
   type: 'cli',
   command: 'node',
@@ -220,7 +178,6 @@ const cliEntry = {
 if (!audio.models) {
   audio.models = [cliEntry];
 } else {
-  // Prepend CLI entry (highest priority) if not already registered
   const exists = audio.models.some(m =>
     m.type === 'cli' && m.args && m.args[1] === '{{MediaPath}}'
   );

@@ -344,62 +344,79 @@ function validateConfig(cfg) {
 // --- Config resolution ---
 
 /**
- * Resolve ASR config from openclaw.json models.providers.
- * Discovers providers with type: "asr" models, applies prefs if available.
+ * Resolve ASR config from dedicated config file.
+ * Reads ~/.openclaw/config/claw-voice-transcriber.json for provider/model config.
+ * Falls back to openclaw.json models.providers for known ASR-capable providers.
  * @returns {object|null} Config {apiKey, baseUrl, model, style} or null
  */
 function resolveConfigFromOpenClaw() {
-  const ocJson = loadJson(path.join(HOME_DIR, '.openclaw', 'openclaw.json'));
-  if (!ocJson || !ocJson.models || !ocJson.models.providers) return null;
-
-  // Load preferences (optional)
-  const prefs = loadJson(path.join(
-    HOME_DIR, '.openclaw', 'config', 'claw-voice-transcriber-prefs.json'
-  )) || {};
-
-  // Collect all ASR models across providers
-  const asrModels = [];
-  for (const [providerName, provider] of Object.entries(ocJson.models.providers)) {
-    if (!provider || !Array.isArray(provider.models)) continue;
-    for (const model of provider.models) {
-      if (model.type === 'asr') {
-        asrModels.push({ providerName, provider, model });
+  // Primary: dedicated ASR config file
+  const asrConfigPath = path.join(HOME_DIR, '.openclaw', 'config', 'claw-voice-transcriber.json');
+  const asrCfg = loadJson(asrConfigPath);
+  if (asrCfg) {
+    // Multi-provider format
+    if (asrCfg.providers && asrCfg.primaryProvider) {
+      const primary = asrCfg.providers[asrCfg.primaryProvider];
+      if (primary && primary.apiKey) {
+        const result = {
+          apiKey: primary.apiKey,
+          baseUrl: (primary.baseUrl || '').replace(/\/+$/, ''),
+          model: primary.model || '',
+          style: primary.style || STYLE_OPENAI
+        };
+        if (asrCfg.fallbackProvider && asrCfg.providers[asrCfg.fallbackProvider]) {
+          const fb = asrCfg.providers[asrCfg.fallbackProvider];
+          result.fallback = {
+            apiKey: fb.apiKey || '',
+            baseUrl: (fb.baseUrl || '').replace(/\/+$/, ''),
+            model: fb.model || '',
+            style: fb.style || STYLE_OPENAI
+          };
+        }
+        return result;
       }
+    }
+    // Single-provider (flat) format
+    if (asrCfg.apiKey && asrCfg.baseUrl) {
+      return {
+        apiKey: asrCfg.apiKey,
+        baseUrl: (asrCfg.baseUrl || '').replace(/\/+$/, ''),
+        model: asrCfg.model || '',
+        style: asrCfg.style || STYLE_OPENAI
+      };
     }
   }
 
-  if (asrModels.length === 0) return null;
+  // Fallback: try to use providers from openclaw.json that have audio-capable models
+  const ocJson = loadJson(path.join(HOME_DIR, '.openclaw', 'openclaw.json'));
+  if (!ocJson || !ocJson.models || !ocJson.models.providers) return null;
 
-  // Select target: use prefs if available, otherwise first ASR model
-  let target;
-  if (prefs.activeProvider && prefs.activeModel) {
-    target = asrModels.find(
-      m => m.providerName === prefs.activeProvider && m.model.id === prefs.activeModel
-    );
-  }
-  if (!target) target = asrModels[0];
+  const prefs = loadJson(path.join(HOME_DIR, '.openclaw', 'config', 'claw-voice-transcriber-prefs.json')) || {};
 
-  const { provider, model } = target;
-
-  // Determine style: provider.api sets base, provider.asrStyle overrides, model.asrStyle wins
-  let style = STYLE_OPENAI; // default
-  if (provider.api === 'openai-completions') {
-    style = STYLE_QWEN;
-  }
-  if (provider.asrStyle) style = provider.asrStyle;
-  if (model.asrStyle) style = model.asrStyle;
-
-  // Infer style from baseUrl as last resort
-  if (style === STYLE_OPENAI && provider.baseUrl && provider.baseUrl.includes('dashscope')) {
-    style = STYLE_QWEN;
+  // Try the preferred provider from prefs
+  const prefProvider = prefs.activeProvider;
+  if (prefProvider && ocJson.models.providers[prefProvider]) {
+    const p = ocJson.models.providers[prefProvider];
+    if (p.apiKey && p.baseUrl) {
+      const model = prefs.activeModel || '';
+      let style = STYLE_OPENAI;
+      if (p.api === 'openai-completions') style = STYLE_QWEN;
+      if (p.baseUrl.includes('dashscope')) style = STYLE_QWEN;
+      return { apiKey: p.apiKey, baseUrl: p.baseUrl.replace(/\/+$/, ''), model, style };
+    }
   }
 
-  return {
-    apiKey: provider.apiKey || '',
-    baseUrl: (provider.baseUrl || '').replace(/\/+$/, ''),
-    model: model.id || '',
-    style
-  };
+  // Try any provider that has an apiKey and baseUrl
+  for (const [name, p] of Object.entries(ocJson.models.providers)) {
+    if (p.apiKey && p.baseUrl) {
+      let style = STYLE_OPENAI;
+      if (p.api === 'openai-completions') style = STYLE_QWEN;
+      if (p.baseUrl.includes('dashscope')) style = STYLE_QWEN;
+      return { apiKey: p.apiKey, baseUrl: p.baseUrl.replace(/\/+$/, ''), model: '', style };
+    }
+  }
+
+  return null;
 }
 
 function resolveConfig() {
@@ -596,7 +613,7 @@ function transcribeQwen(audioSource, isUrl, cfg, lookupFn) {
     messages: [{ role: 'user', content: [{ type: 'input_audio', input_audio: inputAudio }] }],
     stream: false
   });
-  return httpRequest(cfg, `${cfg.baseUrl}/chat/completions`, payload, 'application/json', null, lookupFn);
+  return httpRequest(cfg, `${cfg.baseUrl}/chat/completions`, payload, 'application/json', lookupFn);
 }
 
 /** Transcribe using OpenAI-style API (/audio/transcriptions + multipart) */
@@ -607,7 +624,7 @@ function transcribeOpenAI(audioSource, isUrl, cfg, lookupFn) {
   const safeName = sanitizeFilename(path.basename(resolved));
   const mime = safeMimeType(AUDIO_MIME_MAP[ext]);
   const { body, boundary } = buildMultipart(cfg.model, safeName, mime, buf);
-  return httpRequest(cfg, `${cfg.baseUrl}/audio/transcriptions`, body, `multipart/form-data; boundary=${boundary}`, null, lookupFn);
+  return httpRequest(cfg, `${cfg.baseUrl}/audio/transcriptions`, body, `multipart/form-data; boundary=${boundary}`, lookupFn);
 }
 
 /** Download audio from URL with redirect/size limits, then transcribe via OpenAI-style API */
@@ -683,7 +700,7 @@ async function downloadThenTranscribe(url, cfg, redirectsLeft, visited, lookupFn
           : 'audio/wav'
         );
         const { body, boundary } = buildMultipart(cfg.model, 'audio', detectedMime, buf);
-        httpRequest(cfg, `${cfg.baseUrl}/audio/transcriptions`, body, `multipart/form-data; boundary=${boundary}`, null, lookupFn).then(resolve, reject);
+        httpRequest(cfg, `${cfg.baseUrl}/audio/transcriptions`, body, `multipart/form-data; boundary=${boundary}`, lookupFn).then(resolve, reject);
       });
       res.on('error', reject);
     }).on('timeout', function () { this.destroy(); reject(new Error('Download timeout')); })
